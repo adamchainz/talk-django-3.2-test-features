@@ -1,0 +1,295 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+        <title>New Testing Features in Django</title>
+
+        <link rel="stylesheet" href="dist/reset.css">
+        <link rel="stylesheet" href="dist/reveal.css">
+        <link rel="stylesheet" href="dist/theme/django.css" id="theme">
+
+        <!-- <link rel="stylesheet" href="css/theme/django.css"> -->
+
+        <!-- Theme used for syntax highlighted code -->
+        <link rel="stylesheet" href="plugin/highlight/monokai.css" id="highlight-theme">
+
+        <!-- Printing and PDF exports -->
+        <script>
+            var link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.type = 'text/css';
+            link.href = window.location.search.match(/print-pdf/gi) ? 'css/print/pdf.css' : 'css/print/paper.css';
+            document.getElementsByTagName('head')[0].appendChild(link);
+        </script>
+    </head>
+    <body>
+        <div class="reveal">
+            <div class="slides">
+
+<section>
+    <h1>New Testing Features in Django 3.2</h1>
+    <h2>Adam Johnson</h2>
+</section>
+
+<section>
+    <h2>🚀 setUpTestData isolation</h2>
+    <ul>
+        <li>“Objects assigned to class attributes in <code>TestCase.setUpTestData()</code> are now isolated for each test method.”</li>
+        <li>Imported from django-testdata project.</li>
+        <li>Makes <code>setUpTestData()</code> “actually usable” to supercharge your tests.</li>
+    </ul>
+</section>
+
+<section>
+    <pre><code class="language-python">from django.test import TestCase
+from example.core.models import Book
+
+class SetUpTestDataTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.book = Book.objects.create(title="Meditations")
+
+    def test_that_changes_title(self):
+        self.book.title = "Antifragile"
+
+    def test_that_reads_title_from_db(self):
+        db_title = Book.objects.get().title
+        assert db_title == "Meditations"
+
+    def test_that_reads_in_memory_title(self):
+        assert self.book.title == "Meditations"</code></pre>
+</section>
+
+<section>
+    <h3>On Django 3.1</h3>
+    <pre><code class="language-console">$ ./manage.py test example.core.tests.test_setuptestdata
+Creating test database for alias 'default'...
+System check identified no issues (0 silenced).
+.F.
+======================================================================
+FAIL: test_that_reads_in_memory_title (example.core.tests.test_setuptestdata.SetUpTestDataTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/.../example/core/tests/test_setuptestdata.py", line 19, in test_that_reads_in_memory_title
+    assert self.book.title == "Meditations"
+AssertionError
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.002s
+
+FAILED (failures=1)
+Destroying test database for alias 'default'...</code></pre>
+</section>
+
+<section>
+    <h3>On Django 3.2</h3>
+    <pre><code class="language-console">$ ./manage.py test example.core.tests.test_setuptestdata
+Creating test database for alias 'default'...
+System check identified no issues (0 silenced).
+...
+----------------------------------------------------------------------
+Ran 3 tests in 0.002s
+
+OK
+Destroying test database for alias 'default'...</code></pre>
+</section>
+
+<section>
+    <h2>💁‍♀️ faulthandler</h2>
+    <ul>
+        <li>“DiscoverRunner now enables faulthandler by default.”</li>
+        <li>Copied from pytest</li>
+        <li>Python’s <code>faulthandler</code> default enabled</li>
+        <li>Gives more information for hard-to-debug situations</li>
+    </ul>
+</section>
+
+<section>
+    <pre><code class="language-python">import os
+import signal
+
+from django.test import SimpleTestCase
+
+
+class FaulthandlerTests(SimpleTestCase):
+    def test_segv(self):
+        # Directly trigger the segmentation fault
+        # signal, which normally occurs due to
+        # unsafe memory access in C
+        os.kill(os.getpid(), signal.SIGSEGV)</code></pre>
+</section>
+
+<section>
+    <h3>On Django 3.1</h3>
+    <pre><code class="language-console">$ ./manage.py test
+System check identified no issues (0 silenced).
+[1]    31127 segmentation fault  ./manage.py test</code></pre>
+</section>
+
+<section>
+    <h3>On Django 3.2</h3>
+    <pre><code class="language-console">$ ./manage.py test
+System check identified no issues (0 silenced).
+Fatal Python error: Segmentation fault
+
+Current thread 0x000000010ed1bdc0 (most recent call first):
+  File "/.../example/core/tests/test_faulthandler.py", line 12 in test_segv
+  File "/.../python3.9/unittest/case.py", line 550 in _callTestMethod
+  ...
+  File "/.../django/test/runner.py", line 668 in run_suite
+  ...
+  File "/..././manage.py", line 17 in main
+  File "/..././manage.py", line 21 in <module>
+[1]    31509 segmentation fault  ./manage.py test</code></pre>
+</section>
+
+<section>
+    <h2>⏰ Timing</h2>
+
+    <ul>
+        <li>“DiscoverRunner can now track timings, including database setup and total run time.”</li>
+        <li>Pass <code>--timing</code> for some test timing information.</li>
+    </ul>
+</section>
+
+<section>
+    <h3>On Django 3.2</h3>
+    <pre><code class="language-console">$ ./manage.py test --timing
+Creating test database for alias 'default'...
+System check identified no issues (0 silenced).
+...
+----------------------------------------------------------------------
+Ran 3 tests in 0.002s
+
+OK
+Destroying test database for alias 'default'...
+Total database setup took 0.019s
+  Creating 'default' took 0.019s
+Total database teardown took 0.000s
+Total run took 0.028s</code></pre>
+</section>
+
+<section>
+    <h2>🚝 Test <code>on_commit</code> callbacks</h2>
+    <ul>
+        <li>“The new <code>TestCase.captureOnCommitCallbacks()</code> method captures callback functions passed to <code>transaction.on_commit()</code> in a list.”</li>
+        <li>“This allows you to test such callbacks without using the slower <code>TransactionTestCase</code>.”</li>
+        <li>Imported from django-capture-on-commit-callbacks.</li>
+    </ul>
+</section>
+
+<section>
+    <h3>View using <code>on_commit()</code></h3>
+
+    <pre><code class="language-python">from django.db import transaction
+
+@require_http_methods(("POST",))
+def contact(request):
+    message = request.POST.get('message', '')
+    attempt = ContactAttempt.objects.create(message=message)
+
+    @transaction.on_commit
+    def send_email():
+        send_contact_form_email(attempt)
+
+    return redirect('/contact/success/')</code></pre>
+</section>
+
+<section>
+    <h3>Tests</h3>
+    <pre><code class="language-python">from django.core import mail
+from example.test import TestCase
+
+class ContactTests(TestCase):
+    def test_post(self):
+        with self.captureOnCommitCallbacks(execute=True) as callbacks:
+            response = self.client.post(
+                "/contact/",
+                {"message": "I like your site"},
+            )
+
+        assert response.status_code == 200
+        assert len(callbacks) == 1
+        assert len(mail.outbox) == 1
+        assert mail.outbox[0].subject == "Contact Form"
+        assert mail.outbox[0].body == "I like your site"</code></pre>
+</section>
+
+<section>
+    <h2>⚖️ <code>assertQuerysetEqual</code> change</h2>
+    <ul>
+        <li>“<code>TransactionTestCase.assertQuerysetEqual()</code> now supports direct comparison against another queryset...”</li>
+        <li>Cleaned up Django’s own test suite.</li>
+    </ul>
+</section>
+
+<section>
+    <h3>On Django 3.1</h3>
+    <pre><code class="language-python">from django.test import TestCase
+
+from example.core.models import Book
+
+
+class AssertQuerySetEqualTests(TestCase):
+    def test_comparison(self):
+        Book.objects.create(title="Meditations")
+        Book.objects.create(title="Antifragile")
+
+        self.assertQuerysetEqual(
+            Book.objects.order_by("title"),
+            [&quot;&lt;Book: Antifragile&gt;&quot;, &quot;&lt;Book: Meditations&gt;&quot;],
+        )</code></pre>
+</section>
+
+<section>
+    <h3>On Django 3.2</h3>
+    <pre><code class="language-python">from django.test import TestCase
+
+from example.core.models import Book
+
+
+class AssertQuerySetEqualTests(TestCase):
+    def test_comparison(self):
+        book1 = Book.objects.create(title="Meditations")
+        book2 = Book.objects.create(title="Antifragile")
+
+        self.assertQuerysetEqual(
+            Book.objects.order_by("title"),
+            [book2, book1],
+        )</code></pre>
+</section>
+
+<section>
+    <h1>Thank you! 🤗</h1>
+    <ul>
+        <li>Adam Johnson</li>
+        <li>@adamchainz on GitHub &amp; Twitter</li>
+        <li>me@adamj.eu</li>
+        <li><a href="https://github.com/adamchainz/talk-how-to-hack-a-django-website">github.com/adamchainz/talk-how-to-hack-a-django-website</a></li>
+    </ul>
+</section>
+
+            </div>
+        </div>
+
+        <script src="dist/reveal.js"></script>
+        <script src="plugin/highlight/highlight.js"></script>
+        <script>
+            // More info about initialization & config:
+            // - https://revealjs.com/initialization/
+            // - https://revealjs.com/config/
+            Reveal.initialize({
+                hash: true,
+
+                controls: false,
+                center: false,
+                progress: false,
+
+                // Learn about plugins: https://revealjs.com/plugins/
+                plugins: [ RevealHighlight ]
+            });
+        </script>
+    </body>
+</html>
